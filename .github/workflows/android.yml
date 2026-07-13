@@ -25,6 +25,7 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
       with:
         cache-disabled: true
+        validate-wrappers: false
 
     - name: Create .env from .env.example
       run: cp .env.example .env
