@@ -46,7 +46,7 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build APKs and Bundles
-      run: ./gradlew assembleDebug assembleRelease bundleRelease --no-daemon --no-configuration-cache
+      run: ./gradlew assembleDebug assembleRelease bundleRelease
 
     - name: Upload Debug APK Artifact
       uses: actions/upload-artifact@v4
