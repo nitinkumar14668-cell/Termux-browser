@@ -79,7 +79,7 @@ class BrowserViewModel : ViewModel() {
                 val updated = currentList.toMutableList()
                 updated.add(0, LogEntry(timestamp, message)) // Add new log to the top
                 if (updated.size > 150) {
-                    updated.removeLast() // Keep logs under 150 entries
+                    updated.removeAt(updated.lastIndex) // Keep logs under 150 entries
                 }
                 updated
             }
