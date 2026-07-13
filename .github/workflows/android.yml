@@ -30,6 +30,9 @@ jobs:
     - name: Create .env from .env.example
       run: cp .env.example .env
 
+    - name: Regenerate Gradle Wrapper
+      run: gradle wrapper
+
     - name: Decode Debug Keystore
       run: |
         if [ -f debug.keystore.base64 ]; then
