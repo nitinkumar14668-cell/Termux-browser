@@ -1,0 +1,6 @@
+{
+  "name": "Termux Browser",
+  "description": "A fully-functional Material 3 web browser that runs an embedded control server, allowing full terminal/script automation from Termux.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
