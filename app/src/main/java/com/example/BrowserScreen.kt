@@ -75,10 +75,17 @@ fun BrowserScreen(
     // Keep WebView reference
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
 
-    // Sync input box when URL changes internally (e.g. user clicks a link)
-    LaunchedEffect(currentUrl) {
+    // Sync input box and WebView when URL changes (internally, via Deep Link, or API)
+    LaunchedEffect(currentUrl, webViewInstance) {
         if (currentUrl != urlInputText) {
             urlInputText = currentUrl
+        }
+        val webView = webViewInstance
+        if (webView != null) {
+            val formatted = formatUrl(currentUrl)
+            if (webView.url != formatted && webView.url != currentUrl) {
+                webView.loadUrl(formatted)
+            }
         }
     }
 
@@ -465,6 +472,76 @@ fun BrowserScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Direct Termux Link Launcher Card
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Terminal,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        "Termux App Direct Link",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Text(
+                                    "This app is now directly linked with Termux! Any web link you open or share in Termux (using termux-open or browser option) can be viewed directly in this browser.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                
+                                Spacer(modifier = Modifier.height(12.dp))
+                                
+                                Button(
+                                    onClick = {
+                                        val launchIntent = context.packageManager.getLaunchIntentForPackage("com.termux")
+                                        if (launchIntent != null) {
+                                            context.startActivity(launchIntent)
+                                        } else {
+                                            Toast.makeText(context, "Termux application is not installed on this device!", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().testTag("launch_termux_button"),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondary
+                                    )
+                                ) {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Open Termux App")
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Text(
+                                    text = "💡 Tip: Setup Termux open-url default to this app, then simply type `termux-open <url>` to launch directly inside this window.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
                     // Server Control Panel Card
                     item {
                         Card(
@@ -567,6 +644,71 @@ fun BrowserScreen(
                                 )
 
                                 Spacer(modifier = Modifier.height(12.dp))
+
+                                // One-Click CLI Installer Card
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            "🚀 One-Click CLI Tool Installer",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "Copy and run this command in Termux to install a global 'tb' tool for full browser control:",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFF1E222B), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val installerCommand = "curl -s http://localhost:$serverPort/tb > tb && chmod +x tb && mv tb ~/../usr/bin/"
+                                            Text(
+                                                text = installerCommand,
+                                                color = Color(0xFF61AFEF),
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    val clip = ClipData.newPlainText("termux_installer", installerCommand)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    Toast.makeText(context, "Installer command copied!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Outlined.ContentCopy,
+                                                    contentDescription = "Copy installer",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            "💡 Setup once, then type 'tb help' to see all commands (open, back, reload, scroll, type, click, screenshot, etc.).",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
 
                                 // List of snippets
                                 CommandSnippetItem(

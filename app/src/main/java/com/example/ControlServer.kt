@@ -112,6 +112,10 @@ class ControlServer(
     private suspend fun routeRequest(method: String, path: String, body: String, output: OutputStream) {
         try {
             when {
+                (path == "/tb" || path == "/tb.sh" || path == "/cli") && method == "GET" -> {
+                    val script = getCliScript(port)
+                    sendTextResponse(output, 200, "text/plain; charset=utf-8", script)
+                }
                 path == "/api/status" && method == "GET" -> {
                     val result = commandHandler.handleCommand(BrowserCommand.GetStatus)
                     when (result) {
@@ -316,5 +320,214 @@ class ControlServer(
         output.write(headers.toByteArray(Charsets.UTF_8))
         output.write(data)
         output.flush()
+    }
+
+    private fun getCliScript(currentPort: Int): String {
+        val template = """
+#!/bin/bash
+
+# Termux Browser (tb) CLI Client
+# Fully control your browser from Termux terminal.
+
+PORT=__PORT__
+BASE_URL="http://localhost:_DS_PORT"
+
+# Colors for terminal
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+show_help() {
+    echo -e "_DS_{GREEN}=== Termux Browser (tb) CLI Client ===_DS_{NC}"
+    echo -e "Control your Android browser window directly from Termux.\n"
+    echo -e "_DS_{YELLOW}Usage:_DS_{NC}"
+    echo -e "  tb [command] [args...]\n"
+    echo -e "_DS_{YELLOW}Commands:_DS_{NC}"
+    echo -e "  _DS_{CYAN}status_DS_{NC}                    Show browser status (active URL, Title, and load state)"
+    echo -e "  _DS_{CYAN}open | go | navigate_DS_{NC} <url>  Open a website or query (performs Google Search if query)"
+    echo -e "  _DS_{CYAN}back | b_DS_{NC}                  Go back in history"
+    echo -e "  _DS_{CYAN}forward | f_DS_{NC}               Go forward in history"
+    echo -e "  _DS_{CYAN}reload | r_DS_{NC}                Reload the active webpage"
+    echo -e "  _DS_{CYAN}title_DS_{NC}                     Get current webpage title"
+    echo -e "  _DS_{CYAN}url_DS_{NC}                       Get current webpage URL"
+    echo -e "  _DS_{CYAN}html | source_DS_{NC}             Dump raw HTML source of the active webpage"
+    echo -e "  _DS_{CYAN}dump | text_DS_{NC}               Extract and dump visible text from the page"
+    echo -e "  _DS_{CYAN}screenshot | shot_DS_{NC} [file]   Take a screenshot and save it (default: screenshot.png)"
+    echo -e "  _DS_{CYAN}scroll_DS_{NC} <up|down|top|bottom> Scroll the webpage layout"
+    echo -e "  _DS_{CYAN}click_DS_{NC} <css-selector>      Click any HTML element matching CSS selector"
+    echo -e "  _DS_{CYAN}type_DS_{NC} <selector> <text>    Fill an input field with text"
+    echo -e "  _DS_{CYAN}eval | js_DS_{NC} "<code>"        Evaluate raw JavaScript inside the webpage context"
+    echo -e "  _DS_{CYAN}help | -h | --help_DS_{NC}        Show this help screen\n"
+    echo -e "_DS_{YELLOW}Examples:_DS_{NC}"
+    echo -e "  tb open google.com"
+    echo -e "  tb open \"how to install termux-api\" (Google Search)"
+    echo -e "  tb scroll down"
+    echo -e "  tb click \"#submit-button\""
+    echo -e "  tb type \"input[type='text']\" \"termux user\""
+    echo -e "  tb screenshot test.png"
+}
+
+if ! command -v curl &> /dev/null; then
+    echo -e "_DS_{RED}Error: curl is required to run this script. Run 'pkg install curl' first._DS_{NC}"
+    exit 1
+fi
+
+CMD=_DS_1
+shift
+
+case "_DS_CMD" in
+    "status")
+        res=_DS_(curl -s "_DS_BASE_URL/api/status")
+        if [ _DS_? -ne 0 ] || [ -z "_DS_res" ]; then
+            echo -e "_DS_{RED}Error: Could not connect to Termux Browser at _DS_BASE_URL. Is the Local Control Server running?_DS_{NC}"
+            exit 1
+        fi
+        url=_DS_(echo "_DS_res" | grep -o '"url":"[^"]*' | cut -d'"' -f4)
+        title=_DS_(echo "_DS_res" | grep -o '"title":"[^"]*' | cut -d'"' -f4)
+        loading=_DS_(echo "_DS_res" | grep -o '"loading":[^,}]*' | cut -d':' -f2)
+        
+        echo -e "_DS_{GREEN}Browser Status:_DS_{NC}"
+        echo -e "  _DS_{YELLOW}Title:_DS_{NC}   _DS_title"
+        echo -e "  _DS_{YELLOW}URL:_DS_{NC}     _DS_url"
+        if [ "_DS_loading" = "true" ]; then
+            echo -e "  _DS_{YELLOW}State:_DS_{NC}   _DS_{RED}Loading..._DS_{NC}"
+        else
+            echo -e "  _DS_{YELLOW}State:_DS_{NC}   _DS_{GREEN}Ready / Idle_DS_{NC}"
+        fi
+        ;;
+    "open" | "go" | "navigate")
+        TARGET_URL="_DS_*"
+        if [ -z "_DS_TARGET_URL" ]; then
+            echo -e "_DS_{RED}Error: URL or search query is required._DS_{NC}"
+            exit 1
+        fi
+        
+        if [[ "_DS_TARGET_URL" != *.* ]] || [[ "_DS_TARGET_URL" == *" "* ]]; then
+            encoded_query=_DS_(echo "_DS_TARGET_URL" | sed 's/ /+/g')
+            TARGET_URL="https://www.google.com/search?q=_DS_encoded_query"
+        elif [[ "_DS_TARGET_URL" != http://* ]] && [[ "_DS_TARGET_URL" != https://* ]]; then
+            TARGET_URL="https://_DS_TARGET_URL"
+        fi
+        
+        echo -e "_DS_{YELLOW}Navigating to:_DS_{NC} _DS_TARGET_URL"
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d "{\"url\":\"_DS_TARGET_URL\"}" "_DS_BASE_URL/api/navigate")
+        echo "_DS_res" | grep -q '"success":true' && echo -e "_DS_{GREEN}Success!_DS_{NC}" || echo -e "_DS_{RED}Failed: _DS_res_DS_{NC}"
+        ;;
+    "back" | "b")
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d '{"action":"back"}' "_DS_BASE_URL/api/control")
+        echo "_DS_res" | grep -q '"success":true' && echo -e "_DS_{GREEN}Went Back._DS_{NC}" || echo -e "_DS_{RED}Failed: _DS_res_DS_{NC}"
+        ;;
+    "forward" | "f")
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d '{"action":"forward"}' "_DS_BASE_URL/api/control")
+        echo "_DS_res" | grep -q '"success":true' && echo -e "_DS_{GREEN}Went Forward._DS_{NC}" || echo -e "_DS_{RED}Failed: _DS_res_DS_{NC}"
+        ;;
+    "reload" | "r" | "refresh")
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d '{"action":"reload"}' "_DS_BASE_URL/api/control")
+        echo "_DS_res" | grep -q '"success":true' && echo -e "_DS_{GREEN}Page Reloaded._DS_{NC}" || echo -e "_DS_{RED}Failed: _DS_res_DS_{NC}"
+        ;;
+    "title")
+        res=_DS_(curl -s "_DS_BASE_URL/api/status")
+        title=_DS_(echo "_DS_res" | grep -o '"title":"[^"]*' | cut -d'"' -f4)
+        echo "_DS_title"
+        ;;
+    "url")
+        res=_DS_(curl -s "_DS_BASE_URL/api/status")
+        url=_DS_(echo "_DS_res" | grep -o '"url":"[^"]*' | cut -d'"' -f4)
+        echo "_DS_url"
+        ;;
+    "html" | "source")
+        curl -s "_DS_BASE_URL/api/html"
+        ;;
+    "dump" | "text")
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d '{"script":"document.body.innerText"}' "_DS_BASE_URL/api/eval")
+        echo "_DS_res" | sed -n 's/.*"result":"\(.*\)".*/\1/p' | sed 's/\\n/\n/g' | sed 's/\\"/"/g'
+        ;;
+    "screenshot" | "shot")
+        FILE_NAME=_DS_{1:-"screenshot.png"}
+        echo -e "_DS_{YELLOW}Capturing live browser screenshot..._DS_{NC}"
+        curl -s -o "_DS_FILE_NAME" "_DS_BASE_URL/api/screenshot"
+        if [ _DS_? -eq 0 ] && [ -f "_DS_FILE_NAME" ] && [ -s "_DS_FILE_NAME" ]; then
+            echo -e "_DS_{GREEN}Screenshot saved successfully as: _DS_FILE_NAME_DS_{NC}"
+        else
+            echo -e "_DS_{RED}Failed to capture or save screenshot._DS_{NC}"
+        fi
+        ;;
+    "scroll")
+        DIR=_DS_(echo "_DS_1" | tr '[:upper:]' '[:lower:]')
+        if [ "_DS_DIR" = "down" ]; then
+            JS_CODE="window.scrollBy(0, window.innerHeight * 0.7);"
+        elif [ "_DS_DIR" = "up" ]; then
+            JS_CODE="window.scrollBy(0, -window.innerHeight * 0.7);"
+        elif [ "_DS_DIR" = "top" ]; then
+            JS_CODE="window.scrollTo(0, 0);"
+        elif [ "_DS_DIR" = "bottom" ]; then
+            JS_CODE="window.scrollTo(0, document.body.scrollHeight);"
+        else
+            echo -e "_DS_{RED}Error: Scroll direction must be up, down, top, or bottom._DS_{NC}"
+            exit 1
+        fi
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d "{\"script\":\"_DS_JS_CODE\"}" "_DS_BASE_URL/api/eval")
+        echo "_DS_res" | grep -q '"success":true' && echo -e "_DS_{GREEN}Scrolled _DS_DIR._DS_{NC}" || echo -e "_DS_{RED}Failed: _DS_res_DS_{NC}"
+        ;;
+    "click")
+        SELECTOR="_DS_1"
+        if [ -z "_DS_SELECTOR" ]; then
+            echo -e "_DS_{RED}Error: CSS selector required._DS_{NC}"
+            exit 1
+        fi
+        ESCAPED_SELECTOR=_DS_(echo "_DS_SELECTOR" | sed 's/"/\\"/g')
+        JS_CODE="const el = document.querySelector(\"_DS_ESCAPED_SELECTOR\"); if (el) { el.click(); 'Clicked'; } else { throw new Error('Element not found'); }"
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d "{\"script\":\"_DS_JS_CODE\"}" "_DS_BASE_URL/api/eval")
+        if echo "_DS_res" | grep -q '"success":true'; then
+            echo -e "_DS_{GREEN}Successfully clicked: _DS_SELECTOR_DS_{NC}"
+        else
+            err=_DS_(echo "_DS_res" | grep -o '"error":"[^"]*' | cut -d'"' -f4)
+            echo -e "_DS_{RED}Failed to click: _DS_{err:-_DS_res}_DS_{NC}"
+        fi
+        ;;
+    "type")
+        SELECTOR="_DS_1"
+        TEXT="_DS_2"
+        if [ -z "_DS_SELECTOR" ] || [ -z "_DS_TEXT" ]; then
+            echo -e "_DS_{RED}Error: Selector and Text are required. Usage: tb type <selector> <text>_DS_{NC}"
+            exit 1
+        fi
+        ESCAPED_SELECTOR=_DS_(echo "_DS_SELECTOR" | sed 's/"/\\"/g')
+        ESCAPED_TEXT=_DS_(echo "_DS_TEXT" | sed 's/"/\\"/g')
+        JS_CODE="const el = document.querySelector(\"_DS_ESCAPED_SELECTOR\"); if (el) { el.value = \"_DS_ESCAPED_TEXT\"; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); 'Typed'; } else { throw new Error('Input element not found'); }"
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d "{\"script\":\"_DS_JS_CODE\"}" "_DS_BASE_URL/api/eval")
+        if echo "_DS_res" | grep -q '"success":true'; then
+            echo -e "_DS_{GREEN}Typed text into: _DS_SELECTOR_DS_{NC}"
+        else
+            err=_DS_(echo "_DS_res" | grep -o '"error":"[^"]*' | cut -d'"' -f4)
+            echo -e "_DS_{RED}Failed to type: _DS_{err:-_DS_res}_DS_{NC}"
+        fi
+        ;;
+    "eval" | "js")
+        SCRIPT="_DS_*"
+        if [ -z "_DS_SCRIPT" ]; then
+            echo -e "_DS_{RED}Error: JavaScript code is required._DS_{NC}"
+            exit 1
+        fi
+        ESCAPED_SCRIPT=_DS_(echo "_DS_SCRIPT" | sed 's/\\\\/\\\\\\\\/g' | sed 's/"/\\"/g')
+        res=_DS_(curl -s -X POST -H "Content-Type: application/json" -d "{\"script\":\"_DS_ESCAPED_SCRIPT\"}" "_DS_BASE_URL/api/eval")
+        if echo "_DS_res" | grep -q '"success":true'; then
+            output=_DS_(echo "_DS_res" | sed -n 's/.*"result":"\(.*\)".*/\1/p')
+            echo -e "_DS_{GREEN}Result:_DS_{NC} _DS_output"
+        else
+            err=_DS_(echo "_DS_res" | grep -o '"error":"[^"]*' | cut -d'"' -f4)
+            echo -e "_DS_{RED}Error: _DS_{err:-_DS_res}_DS_{NC}"
+        fi
+        ;;
+    *)
+        show_help
+        ;;
+esac
+"""
+        return template.replace("_DS_", "$").replace("__PORT__", currentPort.toString())
     }
 }
